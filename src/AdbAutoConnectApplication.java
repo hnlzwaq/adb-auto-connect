@@ -55,8 +55,8 @@ public class AdbAutoConnectApplication {
         InputStream is = null;
         InputStreamReader ir = null;
         BufferedReader br = null;
-        String line = null;
-        String[] array = (String[]) null;
+        String line;
+        String[] array;
         try {
             String imageName = pidName + ".exe";
             Process p = Runtime.getRuntime().exec("TASKLIST /NH /FO CSV /FI \"IMAGENAME EQ " + imageName + "\"");
@@ -134,6 +134,8 @@ public class AdbAutoConnectApplication {
         String phoneIP = "";
         String phonePortStart = "35000";
         String phonePortEnd = "50000";
+        String threadNum = "100";
+
         {
             File configFile = new File("config.properties");
             if (!configFile.exists()) {
@@ -146,7 +148,7 @@ public class AdbAutoConnectApplication {
                     properties.setProperty("phoneIP", phoneIP);
                     properties.setProperty("phonePortStart", phonePortStart);
                     properties.setProperty("phonePortEnd", phonePortEnd);
-                    // 保存键值对到文件中
+                    properties.setProperty("threadNum", threadNum);
                     properties.store(output, "自动生成配置文件");
                     System.out.println("自动生成配置文件," + configFile.getAbsolutePath());
                 } catch (IOException io) {
@@ -169,8 +171,9 @@ public class AdbAutoConnectApplication {
                     properties.load(inputStream);
                     adbPath = properties.getProperty("adbPath", adbPath);
                     phoneIP = properties.getProperty("phoneIP", phoneIP);
-                    phonePortStart = properties.getProperty("phonePortStart", phonePortStart + "");
-                    phonePortEnd = properties.getProperty("phonePortEnd", phonePortEnd + "");
+                    phonePortStart = properties.getProperty("phonePortStart", phonePortStart);
+                    phonePortEnd = properties.getProperty("phonePortEnd", phonePortEnd);
+                    threadNum = properties.getProperty("threadNum", threadNum);
                     System.out.println("读取配置文件," + configFile.getAbsolutePath());
                 } catch (IOException io) {
                     io.printStackTrace();
@@ -214,6 +217,17 @@ public class AdbAutoConnectApplication {
                 }
             }
 
+            if (threadNum == null || threadNum.trim().length() < 1) {
+                System.out.println("请设置扫描线程数 -》 threadNum");
+                exit = true;
+            } else {
+                try {
+                    Integer.parseInt(threadNum);
+                } catch (Exception e) {
+                    System.out.println("请设置扫描的结束端口号 为数字 -》 threadNum");
+                }
+            }
+
 
             if (exit) {
                 System.out.println("程序100秒后退出");
@@ -225,6 +239,7 @@ public class AdbAutoConnectApplication {
             System.out.println("手机ip地址：" + phoneIP);
             System.out.println("扫描启动开始端口：" + phonePortStart);
             System.out.println("扫描启动结束端口：" + phonePortEnd);
+            System.out.println("扫描线程数：" + threadNum);
         }
 
 
@@ -247,18 +262,19 @@ public class AdbAutoConnectApplication {
         }
 
         {
-            System.out.println("启动100个线程链接");
-            ExecutorService executorService = Executors.newFixedThreadPool(100);
+            System.out.println("启动" + threadNum + "个线程链接");
+            ExecutorService executorService = Executors.newFixedThreadPool(Integer.parseInt(threadNum));
             String ip = phoneIP;
             int port = Integer.parseInt(phonePortStart);
             for (; port < Integer.parseInt(phonePortEnd); port++) {
                 int finalPort = port;
+                String finalAdbPath = adbPath;
                 executorService.submit(() -> {
                     if (checkIpPort(ip, finalPort)) {
                         System.out.println("port is open:" + finalPort);
                         try {
                             Runtime mt = Runtime.getRuntime();
-                            File myfile = new File("D:\\wanganqing\\Applications\\Android-Sdk\\platform-tools", "adb.exe");
+                            File myfile = new File(finalAdbPath);
                             System.out.println(myfile.getAbsolutePath() + " connect " + ip + ":" + finalPort);
                             Process process = mt.exec(new String[]{myfile.getAbsolutePath(), "connect", ip + ":" + finalPort});
                             String str;
