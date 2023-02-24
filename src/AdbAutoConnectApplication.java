@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class AdbAutoConnectApplication {
 
@@ -19,6 +20,25 @@ public class AdbAutoConnectApplication {
         String phonePortStart = "35000";
         String phonePortEnd = "50000";
         String threadNum = "100";
+        ThreadPoolExecutor executorService;
+
+        {
+            String name = ManagementFactory.getRuntimeMXBean().getName();
+            System.out.println(name);
+            String cpid = name.split("@")[0];
+            System.out.println("当前进程pid:" + cpid);
+            String pidName = getPidNameByPid(cpid).replaceAll(".exe", "");
+            System.out.println("当前进程name:" + pidName);
+            //获取当前程序的PID
+            List<String> list = getPIDListByPidName(pidName);
+            list.remove(cpid);
+            for (String pid : list) {
+                //停止杀死pid
+                System.out.println("停止杀死之前启动的程序：" + pid);
+                String[] cmd = {"cmd.exe", "/c", "taskkill -f /pid " + pid};
+                Runtime.getRuntime().exec(cmd, null, new File(new File("").getCanonicalPath())).waitFor();
+            }
+        }
 
         {
             File configFile = new File("config.properties");
@@ -33,7 +53,7 @@ public class AdbAutoConnectApplication {
                     properties.setProperty("phonePortStart", phonePortStart);
                     properties.setProperty("phonePortEnd", phonePortEnd);
                     properties.setProperty("threadNum", threadNum);
-                    properties.store(output, "自动生成配置文件");
+                    properties.store(output, "自动生成配置文件，ip地址用逗号隔开");
                     System.out.println("自动生成配置文件," + configFile.getAbsolutePath());
                 } catch (IOException io) {
                     io.printStackTrace();
@@ -137,33 +157,17 @@ public class AdbAutoConnectApplication {
             System.out.println("扫描线程数：" + threadNum);
         }
 
-        {
-            String name = ManagementFactory.getRuntimeMXBean().getName();
-            System.out.println(name);
-            String cpid = name.split("@")[0];
-            System.out.println("当前进程pid:" + cpid);
-            String pidName = getPidNameByPid(cpid).replaceAll(".exe", "");
-            System.out.println("当前进程name:" + pidName);
-            //获取当前程序的PID
-            List<String> list = getPIDListByPidName(pidName);
-            list.remove(cpid);
-            for (String pid : list) {
-                //停止杀死pid
-                System.out.println("停止杀死之前启动的程序：" + pid);
-                String[] cmd = {"cmd.exe", "/c", "taskkill -f /pid " + pid};
-                Runtime.getRuntime().exec(cmd, null, new File(new File("").getCanonicalPath())).waitFor();
-            }
-        }
+
 
         {
-            System.out.println("启动" + threadNum + "个线程链接");
-            ExecutorService executorService = Executors.newFixedThreadPool(Integer.parseInt(threadNum));
+
+            executorService = (ThreadPoolExecutor) Executors.newFixedThreadPool(Integer.parseInt(threadNum));
             for (String ip : phoneIPs) {
                 if (!checkIp(ip)) {
                     System.out.println("无法链接，手机ip地址：" + ip);
                     continue;
                 }
-                System.out.println("开始扫描手机ip地址：" + ip);
+                System.out.println("添加扫描手机ip地址：" + ip);
                 int port = Integer.parseInt(phonePortStart);
                 for (; port < Integer.parseInt(phonePortEnd); port++) {
                     int finalPort = port;
@@ -181,17 +185,34 @@ public class AdbAutoConnectApplication {
                                 while ((str = (buffer.readLine())) != null) {
                                     System.out.println(str);
                                     if (str.contains(ip) && str.contains("connected")) {
-                                        System.out.println("退出");
-                                        System.exit(0);
+                                        System.out.println("链接成功 ip:" + ip + " port:" + finalPort);
                                     }
                                 }
                             } catch (Exception e) {
-                                System.out.println(e);
+                                e.printStackTrace();
                             }
                         }
                     });
                 }
+
             }
+        }
+
+        {
+            Thread.sleep(100);
+            System.out.println("扫描总数量：" + executorService.getTaskCount());
+            while (executorService.getActiveCount() > 0) {
+                System.out.println("剩余扫描数：" + (executorService.getTaskCount() - executorService.getCompletedTaskCount()));
+                Thread.sleep(1000);
+            }
+            System.out.println("剩余扫描数：" + (executorService.getTaskCount() - executorService.getCompletedTaskCount()));
+
+            System.out.print("扫描结束 ");
+            for (int i = 0; i < 10; i++) {
+                Thread.sleep(500);
+                System.out.print(".");
+            }
+            executorService.shutdownNow();
         }
     }
 
@@ -316,7 +337,13 @@ public class AdbAutoConnectApplication {
     private static String[] string2Array(String phoneIPs) {
         if (phoneIPs == null || phoneIPs.trim().length() == 0) {
             return new String[]{"192.168.1.94"};
+
         }
+        phoneIPs = phoneIPs.trim();
+        phoneIPs = phoneIPs.replaceAll("，", ",");
+        phoneIPs = phoneIPs.replaceAll("；", ",");
+        phoneIPs = phoneIPs.replaceAll(";", ",");
+        phoneIPs = phoneIPs.replaceAll(" ", "");
         return phoneIPs.split(",");
     }
 
